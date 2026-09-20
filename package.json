@@ -1,0 +1,38 @@
+{
+  "name": "chat-pc-bridge",
+  "version": "1.2.0",
+  "description": "Let ChatGPT web chat drive this PC through a secured MCP bridge: files, shell, screen, local coding agents, in-chat cards and a local workbench.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "bin": {
+    "chatbridge": "bin/chatbridge.mjs",
+    "kestrel": "bin/kestrel.mjs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"dist/tests/**/*.test.js\"",
+    "bridge": "node --disable-warning=ExperimentalWarning dist/src/bridge/cli.js",
+    "agent": "node --disable-warning=ExperimentalWarning dist/src/agent/cli.js",
+    "up": "node --disable-warning=ExperimentalWarning dist/src/bridge/cli.js up",
+    "test:real": "npm run build && node --disable-warning=ExperimentalWarning spike/e2e-real.mjs nim",
+    "docs": "npm run build && node scripts/gen-tool-docs.mjs",
+    "check": "npm run test && npm run docs && git diff --quiet docs || (echo \"docs/TOOLS.md is out of date\" && exit 1)"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "aws4fetch": "^1.0.20",
+    "express": "^5.2.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.13.5",
+    "typescript": "^7.0.2"
+  },
+  "license": "Apache-2.0",
+  "private": true
+}

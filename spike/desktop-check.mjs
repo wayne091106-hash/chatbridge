@@ -1,0 +1,18 @@
+import { writeFileSync } from "node:fs";
+import { createRuntime } from "../dist/src/core/runtime.js";
+import { BridgeConfigSchema } from "../dist/src/core/config.js";
+import { createLogger } from "../dist/src/core/logger.js";
+import os from "node:os";
+import path from "node:path";
+const dir = path.join(os.tmpdir(), "cb-desktop-check");
+const rt = await createRuntime({ dataDir: dir, config: BridgeConfigSchema.parse({ executor: { kind: "codex" }, logLevel: "warn" }), logger: createLogger("warn") });
+const t = async (name, fn) => { const t0 = Date.now(); try { const r = await fn(); console.log(`✓ ${name} ${Date.now() - t0}ms`, typeof r === "string" ? r : JSON.stringify(r).slice(0, 300)); } catch (e) { console.log(`✗ ${name}`, e.message.slice(0, 500)); } };
+await t("systemInfo", () => rt.desktop.systemInfo());
+await t("screenshot", async () => { const { png, meta } = await rt.desktop.screenshot({ maxWidth: 1280 }); writeFileSync(path.join(dir, "shot.png"), png); return { bytes: png.length, meta, pngMagic: png.subarray(1, 4).toString() }; });
+await t("windows", async () => (await rt.desktop.windows()).slice(0, 5));
+let saved = "";
+await t("clipboard get", async () => { saved = (await rt.desktop.clipboard({ action: "get" })).text; return { len: saved.length }; });
+await t("clipboard set+get unicode", async () => { await rt.desktop.clipboard({ action: "set", text: "chatbridge 測試 ✓" }); const back = (await rt.desktop.clipboard({ action: "get" })).text; await rt.desktop.clipboard({ action: "set", text: saved }); return back; });
+await t("mouse move (to current position, space=screen)", async () => { const { meta } = await rt.desktop.screenshot({ maxWidth: 320 }); return rt.desktop.mouse({ action: "move", x: meta.cursorX, y: meta.cursorY, space: "screen" }); });
+console.log("screenshot saved to", path.join(dir, "shot.png"));
+await rt.close();

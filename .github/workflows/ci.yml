@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.12"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # Codex is not installed on the runner, so the bridge falls back to the built-in Node executor.
+      - run: npm test
+        env:
+          SKIP_CODEX: "1"
+      - name: docs/TOOLS.md is generated, not hand-written
+        run: |
+          node scripts/gen-tool-docs.mjs
+          git diff --exit-code docs/TOOLS.md

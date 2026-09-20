@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+.chatbridge-test*/
+.chatbridge/
+*.tsbuildinfo
+spike/*.local.*
