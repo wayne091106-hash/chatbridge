@@ -538,6 +538,22 @@ function tunnelLog(profile: string): string {
  * Adds a second (third, …) ChatGPT account to this PC: its own tunnel profile, its own health port, its own
  * watchdog, and a --name so the audit log says which account did what. The tunnels run side by side.
  */
+/**
+ * Absolute path to bin/chatbridge.mjs. Walks up to the package root rather than counting directories,
+ * because this file runs from src/ in development and from dist/src/ once built.
+ */
+function chatbridgeEntry(): string {
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 6; i++) {
+    const candidate = path.join(dir, "bin", "chatbridge.mjs");
+    if (existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error("could not find bin/chatbridge.mjs next to this install");
+}
+
 async function cmdTunnelAdd(a: ParsedArgs) {
   const name = a._[2];
   if (!name || !/^[\w-]+$/.test(name)) throw new Error('usage: chatbridge tunnel add <profile-name> --tunnel-id tunnel_xxx [--key-var GPT_TUNNELS_CONTROL_API_KEY-2]');
@@ -553,7 +569,7 @@ async function cmdTunnelAdd(a: ParsedArgs) {
   const healthPort = flagNumber(a, "health-port") ?? 18081 + used;
   const profileFile = path.join(dir, "profiles", `${name}.yaml`);
   if (existsSync(profileFile) && !a.flags.force) throw new Error(`${profileFile} already exists (use --force to overwrite)`);
-  const cli = path.resolve(fileURLToPath(new URL("../../bin/chatbridge.mjs", import.meta.url))).split("\\").join("/");
+  const cli = chatbridgeEntry().split("\\").join("/");
   writeFileSync(
     profileFile,
     [
