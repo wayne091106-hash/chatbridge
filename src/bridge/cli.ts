@@ -785,7 +785,8 @@ async function cmdQuiz(a: ParsedArgs) {
   const cfg = loadConfig();
   out(`questions: ${items.length}`);
   for (const i of items) out(`  ${i.id}  ${i.question}  (asked ${i.asked ?? 0}x)`);
-  out(`asks before: ${cfg.policy.askOwnerFor.length ? cfg.policy.askOwnerFor.join(", ") : "nothing (set policy.askOwnerFor, e.g. [\"execute\",\"desktop\"])"}`);
+  const asks = [...cfg.policy.askOwnerFor, ...cfg.policy.askOwnerForTools];
+  out(`asks before: ${asks.length ? asks.join(", ") : "nothing (set policy.askOwnerForTools, e.g. [\"mouse\",\"keyboard\"])"}`);
   out(`verified now: ${isVerified() ? "yes" : "no"}`);
 }
 

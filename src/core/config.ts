@@ -68,6 +68,11 @@ export const BridgeConfigSchema = z.object({
        * Empty by default. e.g. ["execute","desktop"] makes commands and mouse/keyboard ask first.
        */
       askOwnerFor: z.array(z.enum(["read", "write", "execute", "desktop"])).default([]),
+      /**
+       * Individual tools that require it, when a whole effect is too broad — e.g. ["mouse","keyboard"]
+       * asks before the PC is physically driven, but leaves screenshots and everything else alone.
+       */
+      askOwnerForTools: z.array(z.string()).default([]),
       denyCommandPatterns: z.array(z.string()).default([]),
       denyPathPatterns: z.array(z.string()).default([]),
     })

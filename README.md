@@ -151,7 +151,7 @@ chatbridge workbench "C:\你的專案"
 ```bash
 npm install
 npm run build
-npm test          # 74 個測試
+npm test          # 75 個測試
 npm run docs      # 新增工具後重新產生 docs/TOOLS.md
 npm link          # 讓 chatbridge 指令在任何地方都能用
 ```

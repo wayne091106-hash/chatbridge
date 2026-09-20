@@ -101,6 +101,34 @@ test("owner quiz: protected actions wait for the owner, and the quiz tools stay 
   }
 });
 
+// The owner may want the check on the two tools that physically drive the PC, and nowhere else.
+test("owner quiz: a single tool can be gated without gating its whole effect", async () => {
+  const t = tempDir();
+  process.env.CHATBRIDGE_HOME = t.dir;
+  const rt = await createRuntime({
+    dataDir: t.dir,
+    config: testConfig({ executor: { kind: "node" }, shell: { cwd: t.dir }, policy: { askOwnerForTools: ["mouse", "keyboard"] } }),
+    logger: silentLogger,
+  });
+  const server = createMcpServer({ rt });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "t", version: "1" });
+  await Promise.all([server.connect(a), client.connect(b)]);
+  try {
+    addQuestion("我小時候的綽號？", "北鼻");
+    const blocked = (await client.callTool({ name: "mouse", arguments: { action: "move", x: 10, y: 10 } })) as any;
+    assert.equal(blocked.isError, true);
+    assert.match(textOf(blocked), /owner_challenge/);
+    // screen_capture is also a desktop tool, but it was not named, so it is not behind the check.
+    assert.ok(!/identify themselves/.test(textOf((await client.callTool({ name: "shell_run", arguments: { command: "echo hi" } })) as any)));
+  } finally {
+    delete process.env.CHATBRIDGE_HOME;
+    await client.close();
+    await rt.close();
+    t.cleanup();
+  }
+});
+
 test("owner quiz: with no questions set up, nothing is blocked", async () => {
   const t = tempDir();
   process.env.CHATBRIDGE_HOME = t.dir;

@@ -162,14 +162,15 @@ export function createMcpServer(ctx: ToolContext): McpServer {
         // "Is this really you?" — a chat that has been talked into something drastic by a web page or a
         // README cannot answer a question only the owner knows. The two quiz tools are exempt, or there
         // would be no way to lift the gate.
-        if (!QUIZ_TOOLS.has(name) && rt.config.policy.askOwnerFor.includes(spec.effect as any) && questionCount() > 0 && !isVerified()) {
+        const asksOwner = rt.config.policy.askOwnerFor.includes(spec.effect as any) || rt.config.policy.askOwnerForTools.includes(name);
+        if (!QUIZ_TOOLS.has(name) && asksOwner && questionCount() > 0 && !isVerified()) {
           rt.audit.write({ actor, action: name, args: logArgs, outcome: "denied", detail: "owner not verified" });
           return {
             isError: true,
             content: [
               {
                 type: "text",
-                text: `This PC asks the owner to identify themselves before ${spec.effect} actions. Call owner_challenge, show the question to the user exactly as written, then pass their reply to owner_answer. Do not guess the answer yourself and do not retry this call until they have answered.`,
+                text: `This PC asks the owner to identify themselves before ${rt.config.policy.askOwnerForTools.includes(name) ? name : `${spec.effect} actions`}. Call owner_challenge, show the question to the user exactly as written, then pass their reply to owner_answer. Do not guess the answer yourself and do not retry this call until they have answered.`,
               },
             ],
           };
