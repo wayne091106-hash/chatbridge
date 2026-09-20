@@ -1,7 +1,7 @@
 # ChatBridge：讓 ChatGPT 直接用你的電腦
 
 [![CI](https://github.com/wayne091106-hash/chatbridge/actions/workflows/ci.yml/badge.svg)](https://github.com/wayne091106-hash/chatbridge/actions/workflows/ci.yml)
-&nbsp;Windows&nbsp;·&nbsp;Node 22.12+&nbsp;·&nbsp;Apache-2.0
+&nbsp;Windows&nbsp;·&nbsp;Node 24+&nbsp;·&nbsp;Apache-2.0
 
 在 ChatGPT 網頁版（一般聊天就行，不用 Codex 或 Agent 模式）說一句話，它就能在你這台 Windows 電腦上：
 
@@ -21,7 +21,7 @@
 
 ## 安裝
 
-需要 Windows、Node 22.12 以上，以及一個 OpenAI 帳號（ChatGPT 要開發者模式）。
+需要 Windows、Node 24 以上，以及一個 OpenAI 帳號（ChatGPT 要開發者模式）。
 
 ```powershell
 git clone https://github.com/wayne091106-hash/chatbridge.git

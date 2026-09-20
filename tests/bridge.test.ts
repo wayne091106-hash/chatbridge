@@ -44,7 +44,7 @@ describe("bridge over HTTP with OAuth", () => {
     });
     rt = await createRuntime({ dataDir: t.dir, config: cfg, logger: silentLogger });
     bridge = await startHttpBridge(rt);
-    base = `http://localhost:${port}`;
+    base = `http://127.0.0.1:${port}`;
   });
 
   after(async () => {

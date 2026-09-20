@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
 $node = (node --version) -replace '^v',''
-if ([version]($node -split '-')[0] -lt [version]"22.12.0") { throw "Node $node is too old; install Node 22.12 or newer." }
+if ([version]($node -split '-')[0] -lt [version]"24.0.0") { throw "Node $node is too old; install Node 24 or newer." }
 
 Write-Host "installing dependencies..." -ForegroundColor Cyan
 if (Test-Path package-lock.json) { npm ci } else { npm install }

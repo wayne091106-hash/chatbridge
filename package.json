@@ -4,7 +4,7 @@
   "description": "Let ChatGPT web chat drive this PC through a secured MCP bridge: files, shell, screen, local coding agents, in-chat cards and a local workbench.",
   "type": "module",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=24.0.0"
   },
   "bin": {
     "chatbridge": "bin/chatbridge.mjs",
