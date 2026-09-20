@@ -50,7 +50,9 @@ Everyday
   chatbridge revoke <id|folder|all>  Take a grant back
   chatbridge name "Office PC"      Name this computer (shown to ChatGPT; helps with several PCs)
   chatbridge agents                Coding agents on this PC and whether they work
-  chatbridge workbench [folder]    Open the full-size workbench in your browser (needs the local server)
+  chatbridge recover               Work that was cut off when ChatBridge stopped, and how to continue it
+  chatbridge workbench [folder] [--new-token]
+                                   Open the full-size workbench in your browser (needs the local server)
   chatbridge drive status|set <folder>|account <email>|off
                                    Google Drive folder for fast file hand-off (收件 / 寄件)
   chatbridge storage status|set|setup|test|off
@@ -611,6 +613,31 @@ async function cmdRevoke(a: ParsedArgs) {
   out(n ? `revoked ${n} grant(s)` : "nothing matched");
 }
 
+/** What was still in flight when the bridge last stopped, and how to pick it up. */
+async function cmdRecover(a: ParsedArgs) {
+  const rt = await createRuntime({ logger: createLogger("error") });
+  try {
+    const { HubJobs } = await import("../hub/jobs.js");
+    const hub = new HubJobs(rt);
+    const { AGENTS } = await import("../hub/agents.js");
+    const rows = hub.list().filter((j) => j.status === "interrupted").slice(0, flagNumber(a, "limit") ?? 10);
+    if (!rows.length) return out("nothing was left unfinished.");
+    for (const j of rows) {
+      const stopped = j.interruptedAt ?? j.endedAt;
+      out(`${j.id}  ${AGENTS[j.agent].label}  stopped ${stopped ? new Date(stopped).toLocaleString() : "?"}`);
+      out(`  in       ${j.cwd}`);
+      out(`  task     ${j.task.replace(/\s+/g, " ").slice(0, 160)}`);
+      const last = [...j.events].reverse().find((e) => e.kind !== "info");
+      out(`  reached  ${last?.text?.replace(/\s+/g, " ").slice(0, 160) ?? "(no steps recorded)"}`);
+      if (j.changed?.length) out(`  touched  ${j.changed.map((c) => c.path).join(", ").slice(0, 200)}`);
+      out(`  continue ${j.agentSession ? `ask ChatGPT to continue job ${j.id}` : `start it again in ${j.cwd} (check agent_diff ${j.id} first)`}`);
+      out("");
+    }
+  } finally {
+    await rt.close();
+  }
+}
+
 async function cmdName(a: ParsedArgs) {
   const name = a._.slice(1).join(" ").trim();
   const cfg = loadConfig();
@@ -717,9 +744,8 @@ function ask(question: string): Promise<string> {
 /** Opens the local workbench page (full-size UI for the PC, outside ChatGPT's card). */
 async function cmdWorkbench(a: ParsedArgs) {
   const cfg = loadConfig();
-  const { workbenchTokenFile } = await import("./workbenchWeb.js");
-  if (!existsSync(workbenchTokenFile())) throw new Error("the local server is not running — start it with: chatbridge serve");
-  const token = readFileSync(workbenchTokenFile(), "utf8").trim();
+  const { workbenchToken } = await import("./workbenchWeb.js");
+  const token = workbenchToken(a.flags["new-token"] === true);
   const cwd = flagString(a, "cwd") ?? a._[1];
   const url = `http://127.0.0.1:${cfg.server.port}/workbench?t=${encodeURIComponent(token)}${cwd ? `&cwd=${encodeURIComponent(path.resolve(cwd))}` : ""}`;
   try {
@@ -793,6 +819,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdGrants();
     case "revoke":
       return cmdRevoke(a);
+    case "recover":
+      return cmdRecover(a);
     case "mode":
       return cmdMode(a);
     case "name":

@@ -1,6 +1,6 @@
 {
   "name": "chat-pc-bridge",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Let ChatGPT web chat drive this PC through a secured MCP bridge: files, shell, screen, local coding agents, in-chat cards and a local workbench.",
   "type": "module",
   "engines": {

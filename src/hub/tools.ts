@@ -309,6 +309,54 @@ export function registerHub(_server: McpServer, define: DefineTool, rt: Runtime)
   );
 
   define(
+    "work_recover",
+    {
+      title: "Unfinished work",
+      description:
+        "What was still in flight when ChatBridge last stopped (crash, reboot, or the window was closed), and how to pick it up. Call this when the user asks what happened to something, or when a conversation resumes after a gap.",
+      input: { limit: z.number().int().min(1).max(30).optional() },
+      effect: "read",
+      meta: { "openai/widgetAccessible": true },
+    },
+    async (a) => {
+      const rows = hub
+        .list()
+        .filter((j) => j.status === "interrupted" || (j.status === "running" && Date.now() - j.startedAt > 6 * 3600_000))
+        .slice(0, a.limit ?? 10);
+      const items = rows.map((j) => ({
+        id: j.id,
+        thread: j.thread ?? j.id,
+        agent: AGENTS[j.agent].label,
+        status: j.status,
+        cwd: j.cwd,
+        task: j.task.replace(/\s+/g, " ").slice(0, 300),
+        startedAt: j.startedAt,
+        stoppedAt: j.interruptedAt ?? j.endedAt,
+        lastStep: [...j.events].reverse().find((e) => e.kind !== "info")?.text?.slice(0, 200) ?? "",
+        changedSoFar: (j.changed ?? []).map((c) => c.path),
+        // An agent session id means the agent itself can carry on from where it stopped.
+        resumable: !!j.agentSession,
+        howToContinue: j.agentSession
+          ? `agent_message with job_id "${j.id}" continues the same agent conversation`
+          : `agent_run again in ${j.cwd}; agent_diff on "${j.id}" first to see what it already changed`,
+      }));
+      const text = items.length
+        ? items
+            .map(
+              (i) =>
+                `${i.id}  ${i.agent}  stopped ${i.stoppedAt ? new Date(i.stoppedAt).toLocaleString() : "?"}
+  task: ${i.task}
+  got as far as: ${i.lastStep || "(no steps recorded)"}
+  files touched: ${i.changedSoFar.length ? i.changedSoFar.join(", ") : "none recorded"}
+  continue: ${i.howToContinue}`,
+            )
+            .join("\n\n")
+        : "Nothing was left unfinished.";
+      return cardResult({ unfinished: items.length }, { items }, [{ type: "text", text }]);
+    },
+  );
+
+  define(
     "agent_jobs",
     { title: "Recent agent conversations", description: "List recent agent conversations with their status.", input: { limit: z.number().int().min(1).max(50).optional() }, effect: "read", meta: { "openai/widgetAccessible": true } },
     async (a) => {

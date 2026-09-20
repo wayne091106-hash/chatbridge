@@ -14,7 +14,7 @@ import { registerHub } from "../hub/tools.js";
 import { registerWorkbench } from "../hub/workbench.js";
 
 export const SERVER_NAME = "chatbridge";
-export const SERVER_VERSION = "1.2.0";
+export const SERVER_VERSION = "1.2.1";
 
 export const INSTRUCTIONS = `ChatBridge gives you hands on the owner's Windows PC (their own machine, full access granted by the owner).
 

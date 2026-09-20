@@ -69,6 +69,18 @@ chatbridge agents          # 每個 agent 裝了沒、上次檢查通不通
 - **電腦 → 對話**：小檔 `xfer_send`，大檔會出現上傳卡片（約 0.5 MB/s）。
 - **最快**：Google Drive 資料夾（`收件`／`寄件`），速度是你家網路全速。`chatbridge drive status` 看設定對不對。
 
+## 東西做到一半被中斷了
+
+不管是當機、重開機，還是你自己不小心把視窗關掉：**在跑的工作會被記下來，不會就這樣消失。**
+
+```bash
+chatbridge recover
+```
+
+會列出每一件被切斷的工作：在哪個資料夾、原本要做什麼、做到哪一步、已經改了哪些檔案，以及**怎麼接下去**（agent 還留著對話 id 的話可以直接續，不然會告訴你先看 `agent_diff` 再重跑）。
+
+在 ChatGPT 裡也一樣，直接問「上次那個做到一半的怎麼了」，它會呼叫 `work_recover`。
+
 ## 工作台打不開
 
 ```bash
@@ -76,7 +88,8 @@ chatbridge serve                    # 本機伺服器要先在跑
 chatbridge workbench "C:\你的專案"
 ```
 
-- 只有本機連得上，網址帶的鑰匙**每次伺服器啟動都會換**，舊網址會失效，重新執行 `chatbridge workbench` 就好。
+- 只有本機連得上。鑰匙存在 `~/.chatbridge/workbench-token`，**重開伺服器之後舊網址照樣能用**；要換一把就加 `--new-token`。
+- 如果整個工作台像死掉一樣（按什麼都沒反應、或顯示 `admin token required`），代表鑰匙對不上——重新執行 `chatbridge workbench` 拿新網址。
 - 工作台輸入框切到「送給 GPT」時，訊息會排進佇列，由 ChatGPT 對話裡的卡片每 25 秒取一次。**那邊要有一張 ChatBridge 的卡片開著**，不然沒人幫你說話。
 
 ## 卡片不動了

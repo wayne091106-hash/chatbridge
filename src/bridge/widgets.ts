@@ -38,6 +38,9 @@ const BASE_CSS = `
 @media (prefers-color-scheme:dark){:root:not(.light){--bg:#212121;--surface:#2a2a2a;--surface2:#303030;--hover:rgba(255,255,255,.06);--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.16);--fg:#ececec;--muted:#b4b4b4;--faint:#8e8e8e;--accent:#48aaff;--ok:#3fbf8f;--bad:#ff6b66;--warn:#e6a23c;--add:rgba(63,191,143,.14);--del:rgba(255,107,102,.13);--addfg:#6fdcaf;--delfg:#ff8f8a;--inv:#ececec;--invfg:#0d0d0d}}
 :root.dark{--bg:#212121;--surface:#2a2a2a;--surface2:#303030;--hover:rgba(255,255,255,.06);--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.16);--fg:#ececec;--muted:#b4b4b4;--faint:#8e8e8e;--accent:#48aaff;--ok:#3fbf8f;--bad:#ff6b66;--warn:#e6a23c;--add:rgba(63,191,143,.14);--del:rgba(255,107,102,.13);--addfg:#6fdcaf;--delfg:#ff8f8a;--inv:#ececec;--invfg:#0d0d0d}
 *{box-sizing:border-box}html,body{margin:0;background:transparent}
+/* The host renders the card as a rounded rectangle and clips it. Anything flush against the edge loses its corners, which is how toolbar buttons at the top-left and top-right became unclickable. */
+#app{padding:8px 14px}
+#app:has(> .wb.full),body.fs #app,body.flush #app{padding:0}
 body{font:14px/1.55 ui-sans-serif,-apple-system,system-ui,"Segoe UI","Noto Sans TC","PingFang TC",sans-serif;color:var(--fg);-webkit-font-smoothing:antialiased}
 button,select,input,textarea{font:inherit;color:inherit}
 .btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line2);background:transparent;cursor:pointer;font-size:13px;white-space:nowrap}
@@ -59,6 +62,7 @@ pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:12.5px/1.5 var(--m
 const ICONS = `
 const IC={
  expand:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
+ collapse:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h6V4M20 14h-6v6M10 10L3 3M14 14l7 7"/></svg>',
  shrink:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>',
  pip:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1"/></svg>',
  send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
@@ -122,7 +126,6 @@ function diffHtml(d){if(!d)return '<div class="muted small" style="padding:10px"
 // ---------------------------------------------------------------------------------------------------------
 // Coding card: "chat coding" inline card (agent_run) and the fullscreen "serious coding" workbench.
 export const AGENT_PANEL_HTML = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${BASE_CSS}
-#app{padding:4px 2px}
 .hd{display:flex;align-items:center;gap:10px;padding:6px 4px 10px}
 .hd .who{min-width:0;flex:1}.hd .ttl{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hd .sub{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -410,7 +413,7 @@ img{max-width:100%;display:block;margin:0 auto}
 .tree{font:12.5px/1.65 var(--mono);white-space:pre;padding:10px 14px}
 .term{background:#0d0d0d;color:#e6e6e6;padding:12px 14px;font:12.5px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;min-height:120px}
 .note{padding:16px;color:var(--muted)}
-</style></head><body><div id="app"><div class="hd"><span class="ttl" id="title">載入中…</span><span class="chip" id="meta"></span><button class="ib" id="refresh" hidden title="重新整理"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6"/></svg></button><button class="ib" id="fs" title="全螢幕"></button><button class="ib" id="pip" title="子母畫面"></button></div>
+</style></head><body><div id="app"><div class="hd"><span class="ttl" id="title">載入中…</span><span class="chip" id="meta"></span><button class="ib" id="refresh" hidden title="重新整理"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6"/></svg></button><button class="ib" id="fs" title="全螢幕"></button><button class="ib" id="back" title="回到對話" hidden></button><button class="ib" id="pip" title="子母畫面"></button></div>
 <div class="body" id="body"></div></div><script>${ICONS}${BRIDGE_JS}
 document.getElementById('fs').innerHTML=IC.expand;document.getElementById('pip').innerHTML=IC.pip;
 let d=null,live=null;
@@ -434,8 +437,15 @@ function schedule(){if(!d||!d.liveMs)return;clearTimeout(live);wait=wait||d.live
   if(d.live!==false&&same<40)schedule()},wait)}
 waitData(x=>{d=x;render();schedule()});
 document.getElementById('refresh').onclick=refresh;
-document.getElementById('fs').onclick=()=>{document.body.classList.add('fs');bridge.display('fullscreen')};
-document.getElementById('pip').onclick=()=>bridge.display('pip');
+document.getElementById('back').innerHTML=IC.collapse;
+// Going fullscreen used to be one-way: there was no control to come back, so the card covered the
+// conversation until it was reloaded.
+function setMode(full){document.body.classList.toggle('fs',full);document.getElementById('fs').hidden=full;document.getElementById('back').hidden=!full}
+document.getElementById('fs').onclick=async()=>{setMode(true);try{await bridge.display('fullscreen')}catch(e){}};
+document.getElementById('back').onclick=async()=>{setMode(false);try{await bridge.display('inline')}catch(e){}};
+document.getElementById('pip').onclick=async()=>{setMode(false);try{await bridge.display('pip')}catch(e){}};
+addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('fs'))document.getElementById('back').click()});
+setMode(bridge.displayMode()==='fullscreen');
 </script></body></html>`;
 
 export const AGENT_PANEL_URI = versionedUri("agent-panel", AGENT_PANEL_HTML);

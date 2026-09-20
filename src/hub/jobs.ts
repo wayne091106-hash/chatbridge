@@ -5,7 +5,7 @@ import { dataDir } from "../core/config.js";
 import { errorMessage, pathKey, randomId, sleep, truncateMiddle } from "../core/util.js";
 import { AGENTS, agentIds, type Access, type AgentId, type HubEvent } from "./agents.js";
 
-export type JobStatus = "running" | "done" | "failed" | "cancelled" | "paused";
+export type JobStatus = "running" | "done" | "failed" | "cancelled" | "paused" | "interrupted";
 
 export interface ChangedFile {
   path: string;
@@ -31,6 +31,8 @@ export interface HubJob {
   gitRepo: boolean;
   /** HEAD when the job started (changes are measured against it). */
   baseCommit?: string;
+  /** Set when the bridge came back and found this job still in flight. */
+  interruptedAt?: number;
   /** Paths that already had uncommitted changes before the job. */
   baseDirty?: string[];
   logFile: string;
@@ -125,11 +127,17 @@ export class HubJobs {
         j.thread ??= j.id;
         j.threadStartedAt ??= j.startedAt;
         j.queued ??= [];
-        // A job that was running when the process died is no longer tracked.
-        if (j.status === "running") {
-          j.status = "failed";
-          j.note = "ChatBridge restarted while this job was running";
+        // The process died (crash, reboot, or the owner closed it) while this job was in flight. Keep it as
+        // its own status rather than a plain failure, write it back so the record survives, and leave the
+        // agent session id in place so the work can be picked up again.
+        if (j.status === "running" || j.status === "paused") {
+          j.status = "interrupted";
+          j.interruptedAt = Date.now();
+          j.note = `${j.note ? j.note + "; " : ""}ChatBridge stopped while this job was in flight`;
           j.endedAt ??= Date.now();
+          this.jobs.set(j.id, j);
+          this.persist(j);
+          continue;
         }
         this.jobs.set(j.id, j);
       } catch {

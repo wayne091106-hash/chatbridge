@@ -227,3 +227,53 @@ test("agent hub: run, live status, changes/diffs, cancel, cards, extras", async 
     t.cleanup();
   }
 });
+
+// If the process dies mid-job (crash, reboot, the owner closing the window), the record has to survive and
+// say how to pick the work up — otherwise the work is simply lost.
+test("interrupted work is recorded and can be looked up afterwards", async () => {
+  const t = tempDir();
+  const home = path.join(t.dir, "home");
+  mkdirSync(path.join(home, "hub", "jobs"), { recursive: true });
+  writeFileSync(
+    path.join(home, "hub", "jobs", "j-crash.json"),
+    JSON.stringify({
+      id: "j-crash",
+      thread: "j-crash",
+      threadStartedAt: Date.now() - 60_000,
+      agent: "kilo",
+      status: "running",
+      cwd: t.dir,
+      task: "把登入頁改成深色模式",
+      startedAt: Date.now() - 60_000,
+      agentSession: "sess-abc",
+      events: [{ seq: 1, kind: "file", text: "edited src/login.tsx", at: Date.now(), paths: ["src/login.tsx"] }],
+      changed: [{ path: path.join(t.dir, "src/login.tsx"), status: "M" }],
+      queued: [],
+    }),
+  );
+  process.env.CHATBRIDGE_HOME = home;
+  const rt = await createRuntime({ dataDir: home, config: testConfig({ executor: { kind: "node" }, shell: { cwd: t.dir } }), logger: silentLogger });
+  const server = createMcpServer({ rt });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "t", version: "1" });
+  await Promise.all([server.connect(a), client.connect(b)]);
+  try {
+    const card = cardOf(await client.callTool({ name: "work_recover", arguments: {} }));
+    assert.equal(card.items.length, 1);
+    const [item] = card.items;
+    assert.equal(item.status, "interrupted");
+    assert.equal(item.resumable, true, "the agent session id is still there, so it can carry on");
+    assert.match(item.lastStep, /login\.tsx/);
+    assert.deepEqual(item.changedSoFar, [path.join(t.dir, "src/login.tsx")]);
+
+    // The new status is written back, so the next start still knows what happened.
+    const onDisk = JSON.parse(readFileSync(path.join(home, "hub", "jobs", "j-crash.json"), "utf8"));
+    assert.equal(onDisk.status, "interrupted");
+    assert.ok(onDisk.interruptedAt > 0);
+  } finally {
+    delete process.env.CHATBRIDGE_HOME;
+    await client.close();
+    await rt.close();
+    t.cleanup();
+  }
+});

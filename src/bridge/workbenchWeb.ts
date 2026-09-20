@@ -7,7 +7,7 @@ import type { Express, Request, Response } from "express";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import express from "express";
-import { writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { dataDir, type BridgeConfig } from "../core/config.js";
 import type { Runtime } from "../core/runtime.js";
@@ -66,22 +66,40 @@ const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 /** Where `chatbridge workbench` finds the token of the server that is currently running. */
 export const workbenchTokenFile = () => path.join(dataDir(), "workbench-token");
 
+/**
+ * The workbench key, kept in one private file and reused.
+ *
+ * It used to be regenerated on every server start, which quietly broke the workbench: any second `serve`
+ * that failed (a port already in use, say) still overwrote the file on its way out, and every URL the real
+ * server had handed out stopped working. Reusing the file also means a link still opens after a restart.
+ */
+export function workbenchToken(rotate = false): string {
+  const file = workbenchTokenFile();
+  if (!rotate && existsSync(file)) {
+    const existing = readFileSync(file, "utf8").trim();
+    if (existing.length >= 16) return existing;
+  }
+  const token = randomToken(24);
+  writeFileSync(file, token, { mode: 0o600 });
+  try {
+    chmodSync(file, 0o600);
+  } catch {
+    /* best effort on Windows */
+  }
+  return token;
+}
+
 export function registerWorkbenchWeb(app: Express, rt: Runtime, cfg: BridgeConfig, extensions: ToolContext["extensions"]) {
   let client: Client | null = null;
   const getClient = async () => (client ??= await localClient(rt, extensions));
-  // A fresh token per server start, handed to the CLI through a private file.
-  const sessionToken = randomToken(24);
-  try {
-    writeFileSync(workbenchTokenFile(), sessionToken, { mode: 0o600 });
-  } catch {
-    /* the page can still be opened with the admin token */
-  }
+  let sessionToken = "";
+  const currentToken = () => (sessionToken ||= workbenchToken());
 
   /** Loopback only, and the admin token either in the header (fetch) or in the URL (opening the page). */
   const guard = (req: Request, res: Response, next: () => void) => {
     if (!LOOPBACK.has(req.hostname) || req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"]) return void res.status(404).end();
     const token = (req.headers.authorization ?? "").replace(/^Bearer /i, "") || String(req.query.t ?? "");
-    const ok = token && (safeEqual(token, sessionToken) || (cfg.auth.adminTokenHash && safeEqual(sha256(token), cfg.auth.adminTokenHash)));
+    const ok = token && (safeEqual(token, currentToken()) || (cfg.auth.adminTokenHash && safeEqual(sha256(token), cfg.auth.adminTokenHash)));
     if (!ok) {
       return void res.status(401).type("text/plain").send("admin token required — run: chatbridge workbench");
     }
