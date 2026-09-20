@@ -135,7 +135,7 @@ export function registerHub(_server: McpServer, define: DefineTool, rt: Runtime)
         "Start a coding agent on this PC as a background worker for a whole task (e.g. 'implement X and run the tests'). Leave `agent` out to use the owner's preferred agent (Kilo Code, then Cline, then Codex). Returns immediately with a live progress card. The run starts a conversation: steer it later with agent_message (queued or interrupting), pause with agent_pause, continue with agent_resume. Write the task self-contained: goal, relevant paths, constraints, how to verify, what to report. access: read (no edits), workspace (default: edits in cwd and commands), full (no restrictions).",
       input: {
         agent: AgentEnum.optional(),
-        task: z.string().min(5),
+        task: z.string().min(1),
         cwd: z.string().optional().describe("Project folder (default: current working directory)"),
         access: z.enum(["read", "workspace", "full"]).optional(),
         model: z.string().optional().describe("Override the agent's model (see agents_list for suggestions)"),

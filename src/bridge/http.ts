@@ -26,7 +26,9 @@ export async function startHttpBridge(rt: Runtime, opts: { extensions?: ToolCont
   const cfg = rt.config;
   const { host, port } = cfg.server;
   const localOrigin = `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}`;
-  const publicOrigin = (cfg.server.publicUrl ?? `http://localhost:${port}`).replace(/\/+$/, "");
+  // Without a public URL, advertise the address we actually bind: "localhost" can resolve to ::1 while
+  // the server listens on 127.0.0.1, and then the advertised metadata URL does not answer.
+  const publicOrigin = (cfg.server.publicUrl ?? localOrigin).replace(/\/+$/, "");
   const mcpUrl = new URL("/mcp", publicOrigin);
 
   if (cfg.auth.mode === "none" && !LOOPBACK.has(host)) {
@@ -36,7 +38,7 @@ export async function startHttpBridge(rt: Runtime, opts: { extensions?: ToolCont
     throw new Error("OAuth mode needs an owner passphrase. Run `chatbridge init` first.");
   }
   if (cfg.auth.mode === "oauth" && !cfg.server.publicUrl) {
-    rt.logger.warn("server.publicUrl is not set; OAuth metadata will advertise http://localhost (fine for local tests only)");
+    rt.logger.warn(`server.publicUrl is not set; OAuth metadata will advertise ${localOrigin} (fine for local tests only)`);
   }
 
   const app = express();

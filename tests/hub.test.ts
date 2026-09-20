@@ -70,6 +70,7 @@ test("agent hub: run, live status, changes/diffs, cancel, cards, extras", async 
     const tools = (await client.listTools()).tools;
     const run = tools.find((x) => x.name === "agent_run")!;
     assert.equal((run._meta as any)["openai/outputTemplate"], AGENT_PANEL_URI);
+    assert.equal((run.inputSchema as any).properties.task.minLength, 1);
     assert.equal((tools.find((x) => x.name === "agent_status")!._meta as any)["openai/widgetAccessible"], true);
     for (const uri of [AGENT_PANEL_URI, VIEWER_URI]) {
       const r = await client.readResource({ uri });
