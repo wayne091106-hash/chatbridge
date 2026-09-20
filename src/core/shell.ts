@@ -98,7 +98,9 @@ export class ShellManager {
       case "powershell":
       case "pwsh": {
         const exe = process.platform === "win32" ? (shell === "pwsh" ? "pwsh.exe" : "powershell.exe") : "pwsh";
-        const prelude = "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;$OutputEncoding=[System.Text.Encoding]::UTF8;$ProgressPreference='SilentlyContinue';";
+        // chcp too: where the console code page is not UTF-8, PowerShell 5.1 turns non-ASCII output into "?"
+        // before the encoding settings below can help.
+        const prelude = "$null = & chcp 65001;" + "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;$OutputEncoding=[System.Text.Encoding]::UTF8;$ProgressPreference='SilentlyContinue';";
         return [exe, "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", prelude + command];
       }
       case "cmd":

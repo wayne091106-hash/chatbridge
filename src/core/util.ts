@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -74,6 +75,24 @@ export function expandHome(p: string): string {
     return path.join(process.env.USERPROFILE ?? process.env.HOME ?? "", p.slice(1));
   }
   return p;
+}
+
+const CASE_INSENSITIVE_FS = process.platform === "win32" || process.platform === "darwin";
+
+/**
+ * A stable key for comparing two paths that may be spelled differently: Windows hands out 8.3 short names
+ * (RUNNER~1) for the same folder git reports in full, and case differs freely on Windows and macOS.
+ * Falls back to a plain resolve when the path is not on disk yet.
+ */
+export function pathKey(p: string): string {
+  const abs = path.resolve(expandHome(p));
+  let real = abs;
+  try {
+    real = realpathSync.native(abs);
+  } catch {
+    // Not on disk (deleted, or about to be created): fall back to the resolved spelling.
+  }
+  return CASE_INSENSITIVE_FS ? real.toLowerCase() : real;
 }
 
 export function errorMessage(err: unknown): string {

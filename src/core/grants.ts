@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { dataDir } from "./config.js";
-import { expandHome, randomId } from "./util.js";
+import { expandHome, pathKey, randomId } from "./util.js";
 
 export interface Grant {
   id: string;
@@ -79,12 +79,7 @@ export function revokeGrant(idOrPath: string, dir?: string): number {
   return list.length - kept.length;
 }
 
-const CASE_INSENSITIVE = process.platform === "win32" || process.platform === "darwin";
-
-function normalise(p: string): string {
-  const resolved = path.resolve(expandHome(p));
-  return CASE_INSENSITIVE ? resolved.toLowerCase() : resolved;
-}
+const normalise = pathKey;
 
 export function samePath(a: string, b: string): boolean {
   return normalise(a) === normalise(b);

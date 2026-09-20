@@ -2,7 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statS
 import path from "node:path";
 import type { Runtime } from "../core/runtime.js";
 import { dataDir } from "../core/config.js";
-import { errorMessage, randomId, sleep, truncateMiddle } from "../core/util.js";
+import { errorMessage, pathKey, randomId, sleep, truncateMiddle } from "../core/util.js";
 import { AGENTS, agentIds, type Access, type AgentId, type HubEvent } from "./agents.js";
 
 export type JobStatus = "running" | "done" | "failed" | "cancelled" | "paused";
@@ -415,7 +415,8 @@ export class HubJobs {
   private async changes(job: HubJob): Promise<ChangedFile[]> {
     const since = job.startedAt - 2000;
     const reported = new Set(job.events.flatMap((e) => e.paths ?? []).map((p) => path.resolve(job.cwd, p)));
-    const carried = new Set((job.carried ?? []).map((p) => path.resolve(job.cwd, p).toLowerCase()));
+    const reportedKeys = new Set([...reported].map(pathKey));
+    const carried = new Set((job.carried ?? []).map((p) => pathKey(path.resolve(job.cwd, p))));
     const out: ChangedFile[] = [];
     if (job.gitRepo) {
       const root = path.resolve((await this.git(job.cwd, ["rev-parse", "--show-toplevel"], 20)).out.trim());
@@ -443,9 +444,9 @@ export class HubJobs {
       for (const { code, rel } of entries) {
         const abs = path.resolve(root, rel);
         // Only attribute files touched during the job (pre-existing uncommitted edits are left out).
-        const touched = carried.has(abs.toLowerCase()) || (code === "D" ? reported.has(abs) || !job.baseDirty?.includes(rel) : this.mtime(abs) >= since || reported.has(abs));
+        const touched = carried.has(pathKey(abs)) || (code === "D" ? reportedKeys.has(pathKey(abs)) || !job.baseDirty?.includes(rel) : this.mtime(abs) >= since || reportedKeys.has(pathKey(abs)));
         if (!touched) continue;
-        seen.add(abs.toLowerCase());
+        seen.add(pathKey(abs));
         const diff = code === "??" ? this.newFilePreview(abs) : (await this.git(root, ["diff", "--no-color", base, "--", rel])).out;
         out.push({ path: abs, status: code === "??" ? "??" : code, diff: truncateMiddle(diff, 60_000) });
         if (out.length >= 200) break;
@@ -455,7 +456,7 @@ export class HubJobs {
       } else if (!out.length) job.note = `${job.note ? job.note + "; " : ""}git shows no changes against ${base.slice(0, 8)}`;
       // Files the agent said it edited are always listed, even if git did not show them.
       for (const abs of reported) {
-        if (seen.has(abs.toLowerCase()) || out.length >= 200) continue;
+        if (seen.has(pathKey(abs)) || out.length >= 200) continue;
         if (!existsSync(abs)) out.push({ path: abs, status: "D" });
         else out.push({ path: abs, status: "M", diff: this.newFilePreview(abs) });
       }
