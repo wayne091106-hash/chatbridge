@@ -86,13 +86,22 @@ const CASE_INSENSITIVE_FS = process.platform === "win32" || process.platform ===
  */
 export function pathKey(p: string): string {
   const abs = path.resolve(expandHome(p));
-  let real = abs;
-  try {
-    real = realpathSync.native(abs);
-  } catch {
-    // Not on disk (deleted, or about to be created): fall back to the resolved spelling.
+  // realpath only works on something that exists, and we are often asked about a file that is about to be
+  // created. Resolve the deepest ancestor that does exist and keep the rest of the path as given.
+  const rest: string[] = [];
+  let dir = abs;
+  for (;;) {
+    try {
+      const real = realpathSync.native(dir);
+      const full = rest.length ? path.join(real, ...rest) : real;
+      return CASE_INSENSITIVE_FS ? full.toLowerCase() : full;
+    } catch {
+      const parent = path.dirname(dir);
+      if (parent === dir) return CASE_INSENSITIVE_FS ? abs.toLowerCase() : abs;
+      rest.unshift(path.basename(dir));
+      dir = parent;
+    }
   }
-  return CASE_INSENSITIVE_FS ? real.toLowerCase() : real;
 }
 
 export function errorMessage(err: unknown): string {

@@ -67,6 +67,9 @@ test("policy: project scope allows the granted folder and refuses everything els
     assert.equal(p.check("write", { paths: ["sub/b.txt"] }).allowed, true, "relative paths resolve against the working directory");
     assert.equal(p.check("execute", { command: "npm test", paths: [project] }).allowed, true);
 
+    // A file that does not exist yet still has to resolve inside the grant, or nothing could ever be created.
+    assert.equal(p.check("write", { paths: [path.join(project, "does", "not", "exist", "yet.txt")] }).allowed, true);
+
     const outside = p.check("write", { paths: [path.join(t.dir, "elsewhere.txt")] });
     assert.equal(outside.allowed, false);
     assert.match(outside.reason!, /outside the granted project folders/);
