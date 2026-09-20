@@ -55,7 +55,7 @@ Everyday
   chatbridge name "Office PC"      Name this computer (shown to ChatGPT; helps with several PCs)
   chatbridge agents                Coding agents on this PC and whether they work
   chatbridge recover               Work that was cut off when ChatBridge stopped, and how to continue it
-  chatbridge quiz status|add|remove <id>|test|lock
+  chatbridge quiz status|add ["問題" --answer x --alt "y,z"]|remove <id>|test|lock
                                    Personal questions used to check it is really you (answers stored hashed)
   chatbridge workbench [folder] [--new-token]
                                    Open the full-size workbench in your browser (needs the local server)
@@ -746,11 +746,14 @@ async function cmdQuiz(a: ParsedArgs) {
   const sub = a._[1] ?? "status";
 
   if (sub === "add") {
-    const question = a._.slice(2).join(" ").trim() || (await ask("問題（例如「我最喜歡的飲料是什麼？」）："));
+    // Without --answer the answer is typed at the prompt, so it never reaches the shell history.
+    const flagAnswer = flagString(a, "answer");
+    const question = (flagAnswer ? a._.slice(2).join(" ") : a._.slice(2).join(" ")).trim() || (await ask("問題（例如「我最喜歡的飲料是什麼？」）："));
     if (!question) throw new Error("no question given");
-    const answer = await ask("答案（只會存雜湊，不會存原文）：");
+    const answer = flagAnswer ?? (await ask("答案（只會存雜湊，不會存原文）："));
     if (!answer) throw new Error("no answer given");
-    const alts = (await ask("其他也算對的說法，用逗號分隔（可留空）：")).split(/[,，]/).map((x) => x.trim()).filter(Boolean);
+    const altSource = flagAnswer ? (flagString(a, "alt") ?? "") : await ask("其他也算對的說法，用逗號分隔（可留空）：");
+    const alts = altSource.split(/[,，]/).map((x) => x.trim()).filter(Boolean);
     const item = addQuestion(question, answer, alts);
     out(`added ${item.id}: ${item.question}`);
     return;
