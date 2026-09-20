@@ -11,12 +11,13 @@ import { registerDrive } from "./drive.js";
 import { registerSummary } from "./summary.js";
 import { registerRelay } from "./relay.js";
 import { registerOwnerCheck } from "./ownerCheck.js";
+import { registerBrowser } from "./browser.js";
 import { registerExtras, machineName } from "./extras.js";
 import { registerHub } from "../hub/tools.js";
 import { registerWorkbench } from "../hub/workbench.js";
 
 export const SERVER_NAME = "chatbridge";
-export const SERVER_VERSION = "1.2.1";
+export const SERVER_VERSION = "1.3.0";
 
 export const INSTRUCTIONS = `ChatBridge gives you hands on the owner's Windows PC (their own machine, full access granted by the owner).
 
@@ -554,6 +555,7 @@ export function createMcpServer(ctx: ToolContext): McpServer {
   }
   registerRelay(define, rt);
   registerOwnerCheck(define, rt);
+  if (rt.config.features.browser) registerBrowser(define, rt);
   {
   }
   for (const ext of ctx.extensions ?? []) ext(server, define, rt);

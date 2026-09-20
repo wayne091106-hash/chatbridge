@@ -1,6 +1,6 @@
 # 工具清單
 
-ChatBridge 1.2.1 對 ChatGPT／Claude 公開 **65 個工具**。
+ChatBridge 1.3.0 對 ChatGPT／Claude 公開 **74 個工具**。
 
 > 這份檔案由 `npm run docs` 從伺服器本身產生，不要手動編輯。
 
@@ -124,4 +124,13 @@ All hunks are validated before anything is written. |
 | `work_recover` | What was still in flight when ChatBridge last stopped (crash, reboot, or the window was closed), and how to pick it up. |
 | `owner_challenge` | Get a personal question that only the owner of this PC can answer. |
 | `owner_answer` | Send the user's reply to the question from owner_challenge, exactly as they wrote it. |
+| `browser_open` | Start (or reuse) the browser this PC drives and go to a URL. |
+| `browser_navigate` | Navigate the current tab: a URL, or 'back' / 'forward' / 'reload'. |
+| `browser_snapshot` | What the current page says, plus every element you can act on with a short ref (e1, e2 …). |
+| `browser_click` | Click an element by its ref from browser_snapshot, or by visible text, or by CSS selector. |
+| `browser_type` | Put text into a field (by ref or selector). |
+| `browser_scroll` | Scroll the current page. |
+| `browser_tabs` | List the open tabs, switch to one, open a new one, close one, or quit the browser entirely. |
+| `browser_eval` | Evaluate an expression in the current page and return its value. |
+| `browser_screenshot` | A picture of the current page, as a card. |
 

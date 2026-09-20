@@ -1,5 +1,27 @@
 # 變更紀錄
 
+## 1.3.0 — 2026-09-20
+
+**瀏覽器控制（9 個新工具）**
+- 直接走 Chrome 的除錯協定（DevTools Protocol），不是截圖點座標。網頁有 DOM，就該指名元素。
+- `browser_snapshot` 回傳整頁文字 ＋ 每個可操作元素的代號；`browser_click` 用代號、看得到的文字或 CSS 選擇器點下去；`browser_type` 填欄位並送出；另有 `browser_open`／`navigate`／`scroll`／`tabs`／`eval`／`screenshot`。
+- 用**獨立的瀏覽器設定檔**，不會繼承擁有者平常登入的所有網站（`browser.ownProfile` 可以改，但那等於把所有登入交出去）。
+- 頁面忽略協定層的點擊或 Enter 時，會退而用網頁自己的方式（`el.click()`、送出表單），並在回覆裡說明換過方法——不會假裝成功。
+- 沒有新增任何相依套件：CDP 走 Node 內建的 WebSocket。
+
+**兩個 ChatGPT 帳號共用一台電腦**
+- `chatbridge tunnel add <名稱> --tunnel-id tunnel_xxx`：各自的 profile、健康埠、log、看門狗，並用 `--name` 在稽核紀錄裡分辨是哪個帳號。
+- `tunnel status|restart|logs` 支援 `--profile`。
+
+**身分問答**
+- `chatbridge quiz add` 設定只有本人答得出來的問題；`policy.askOwnerForTools`（例如 `["mouse","keyboard"]`）指定哪些工具動手前要先確認。
+- 答案只存加鹽雜湊，不進檔案、不進稽核紀錄。沒設題目時完全不擋。
+
+**視覺點擊修好三件事**
+- 沒截圖就點會默默用 1:1 座標點錯地方 → 現在直接擋下來。
+- `screen_capture` 可以只截一個視窗（`window`），預設上限從 1600 提到 1920。
+- 滑鼠鍵盤動作會回報游標最後位置、有沒有被移開、前景視窗是誰。
+
 ## 1.2.1 — 2026-09-20
 
 **工作台修好了（之前是死的）**

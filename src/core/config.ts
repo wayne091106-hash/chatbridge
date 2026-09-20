@@ -84,6 +84,8 @@ export const BridgeConfigSchema = z.object({
       agent: z.boolean().default(false),
       /** Agent hub: hand tasks to installed coding agents (Codex, Claude Code, Kilo, OpenCode, Cline, Gemini). */
       hub: z.boolean().default(true),
+      /** Browser control through the DevTools protocol (browser_* tools). */
+      browser: z.boolean().default(true),
     })
     .prefault({}),
   /**
@@ -100,6 +102,16 @@ export const BridgeConfigSchema = z.object({
       account: z.string().optional(),
       /** Files in 寄件 older than this are deleted when new files are sent. */
       keepDays: z.number().int().min(1).max(365).default(7),
+    })
+    .prefault({}),
+  /** The browser the bridge drives (its own Chrome profile, not the owner's). */
+  browser: z
+    .object({
+      port: z.number().int().min(1).max(65535).default(18222),
+      chromePath: z.string().optional(),
+      /** Use the owner's own Chrome profile — every site they are signed into becomes reachable. Off by default. */
+      ownProfile: z.boolean().default(false),
+      headless: z.boolean().default(false),
     })
     .prefault({}),
   logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),

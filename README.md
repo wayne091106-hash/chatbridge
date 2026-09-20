@@ -8,6 +8,7 @@
 - 開檔案、改檔案、跑指令、看螢幕、動滑鼠鍵盤
 - 把大型寫程式工作交給電腦裡的 **Kilo Code、OpenCode、Cline、Codex、Claude Code**，然後在聊天室裡用**即時進度卡**看它們做事
 - 在聊天室和電腦之間**傳檔案**（兩個方向都行）
+- **操作瀏覽器**：不是截圖亂點，而是直接讀網頁內容、指名按鈕點下去、填表單
 - 用**卡片**顯示圖片、資料夾、程式差異、正在跑的終端機畫面、螢幕截圖
 
 你的電腦**不會對外開任何門**。是電腦主動連到 OpenAI（像打電話出去），不是別人連進來。
@@ -110,6 +111,17 @@ chatbridge workbench "C:\你的專案"
 
 交出去之後聊天室會出現一張**進度卡**：即時顯示 agent 在做什麼（跑什麼指令、改哪個檔），做完列出改了哪些檔案，點一下就看差異。卡片上有「停止」、「全螢幕」、「子母畫面」和「請 GPT 檢查結果」按鈕。
 
+### 操作瀏覽器
+
+說「幫我上那個網站查…」就行。它不是對著截圖猜座標，而是**直接讀網頁的結構**：
+
+- `browser_open` 開一個瀏覽器（**獨立的設定檔**，看不到你平常登入的那些網站；需要登入的站你自己在那個視窗登入一次就會記住）
+- `browser_snapshot` 把整頁的文字和「可以點的東西」列出來，每個給一個代號
+- `browser_click` 指名代號或按鈕上的字，`browser_type` 填欄位、按 Enter
+- `browser_scroll`、`browser_tabs`、`browser_eval`、`browser_screenshot`
+
+遇到頁面不理會模擬點擊時會自動改用網頁自己的方式，並且**老實告訴你它換了方法**。
+
 ### 傳檔案
 
 **最快：Google Drive 資料夾**（`chatbridge drive set "<資料夾>"`，建議用 Google Drive 桌面版的**鏡像模式**，這樣它是硬碟上的真實資料夾，git 和 agent 才能正常讀寫）
@@ -142,7 +154,7 @@ chatbridge workbench "C:\你的專案"
 
 - 怎麼連線、多台電腦、分享給別人：[docs/CONNECT.md](docs/CONNECT.md)
 - 技術細節：[docs/TECHNICAL.md](docs/TECHNICAL.md)
-- 工具清單（65 個，自動產生）：[docs/TOOLS.md](docs/TOOLS.md)
+- 工具清單（74 個，自動產生）：[docs/TOOLS.md](docs/TOOLS.md)
 - 安全模型、擋得住什麼擋不住什麼：[docs/SECURITY.md](docs/SECURITY.md)
 - 出問題時：[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
@@ -151,7 +163,7 @@ chatbridge workbench "C:\你的專案"
 ```bash
 npm install
 npm run build
-npm test          # 75 個測試
+npm test          # 81 個測試
 npm run docs      # 新增工具後重新產生 docs/TOOLS.md
 npm link          # 讓 chatbridge 指令在任何地方都能用
 ```
