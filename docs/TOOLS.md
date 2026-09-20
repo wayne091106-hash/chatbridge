@@ -56,7 +56,7 @@ All hunks are validated before anything is written. |
 
 | 工具 | 做什麼 |
 |---|---|
-| `screen_capture` | Capture the screen (all monitors by default). |
+| `screen_capture` | Capture the screen, or one window. |
 | `mouse` | Move/click/double_click/right_click/middle_click/scroll/drag. |
 | `keyboard` | Type literal text, or send key combos with SendKeys syntax in `keys` (^=Ctrl, %=Alt, +=Shift, {ENTER}, {TAB}, {F5}, ^{ESC}). |
 | `clipboard` | Get or set the clipboard text. |

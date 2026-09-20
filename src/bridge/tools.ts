@@ -460,13 +460,31 @@ export function createMcpServer(ctx: ToolContext): McpServer {
   if (rt.config.features.gui) {
     define(
       "screen_capture",
-      { title: "Screenshot", description: "Capture the screen (all monitors by default). Coordinates for mouse default to this image's pixel space.", input: { max_width: z.number().int().min(320).max(3840).optional(), display: z.enum(["all", "primary"]).optional() }, effect: "desktop", readOnly: true, destructive: false },
+      {
+        title: "Screenshot",
+        description:
+          "Capture the screen, or one window. Coordinates for mouse are in this image's pixel space. For clicking, always pass `window` (a title substring, from windows_list): the target comes out bigger and the coordinates cannot drift between monitors. Capture again after anything moves.",
+        input: {
+          max_width: z.number().int().min(320).max(3840).optional(),
+          display: z.enum(["all", "primary"]).optional(),
+          window: z.union([z.string(), z.number().int()]).optional().describe("Window title substring or pid — capture just that window"),
+        },
+        effect: "desktop",
+        readOnly: true,
+        destructive: false,
+      },
       async (a) => {
-        const { png, meta } = await rt.desktop.screenshot({ maxWidth: a.max_width, display: a.display });
+        const { png, meta } = await rt.desktop.screenshot({ maxWidth: a.max_width, display: a.display, window: a.window });
         return {
           content: [
             { type: "image", data: png.toString("base64"), mimeType: "image/png" },
-            { type: "text", text: `screenshot ${meta.outWidth}x${meta.outHeight} (screen ${meta.width}x${meta.height}, scale ${Number(meta.scale).toFixed(3)}); cursor at screen ${meta.cursorX},${meta.cursorY}` },
+            {
+              type: "text",
+              text:
+                `screenshot ${meta.outWidth}x${meta.outHeight} of ${a.window ? `window "${a.window}"` : "the screen"} at ${meta.x},${meta.y} ${meta.width}x${meta.height}` +
+                `, scale ${Number(meta.scale).toFixed(3)}; cursor at screen ${meta.cursorX},${meta.cursorY}.` +
+                ` Give mouse the x,y you read off THIS image.${Number(meta.scale) < 1 ? " It is scaled down, so a few pixels of error here become more on screen — capture a single window for precision." : ""}`,
+            },
           ],
         };
       },
@@ -476,7 +494,8 @@ export function createMcpServer(ctx: ToolContext): McpServer {
       "mouse",
       {
         title: "Mouse",
-        description: "Move/click/double_click/right_click/middle_click/scroll/drag. x,y are in the last screenshot's pixel space unless space='screen'. scroll amount: negative = down.",
+        description:
+          "Move/click/double_click/right_click/middle_click/scroll/drag. x,y are in the LAST screenshot's pixel space unless space='screen'; take a fresh screen_capture first, and again after the screen changes. The result says where the pointer ended up and which window is in front — check it matches what you aimed at before carrying on. scroll amount: negative = down.",
         input: {
           action: z.enum(["move", "click", "double_click", "right_click", "middle_click", "scroll", "drag"]),
           x: z.number().optional(),

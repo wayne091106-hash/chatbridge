@@ -7,7 +7,9 @@ import { formatBytes, randomId } from "./util.js";
 const USER32 = `
 Add-Type -TypeDefinition @"
 using System;
+using System.Text;
 using System.Runtime.InteropServices;
+[StructLayout(LayoutKind.Sequential)] public struct KRECT { public int Left; public int Top; public int Right; public int Bottom; }
 public static class KUser32 {
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
@@ -15,10 +17,19 @@ public static class KUser32 {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out KRECT r);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder s, int n);
 }
 "@ -ErrorAction SilentlyContinue
 [void][KUser32]::SetProcessDPIAware()
 `;
+
+/**
+ * Puts the title of whatever is in front into $fgTitle, so an action can report where it actually landed.
+ * These are statements, not an expression: assigning the whole thing to a variable captures the window
+ * handle instead of the title.
+ */
+const FOREGROUND_PS = `$fgh=[KUser32]::GetForegroundWindow(); $fgsb=New-Object System.Text.StringBuilder 512; [void][KUser32]::GetWindowText($fgh,$fgsb,512); $fgTitle=$fgsb.ToString()`;
 
 function encodePs(script: string): string {
   return Buffer.from("$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.Encoding]::UTF8;\n" + script, "utf16le").toString("base64");
@@ -45,6 +56,7 @@ export function escapeSendKeys(text: string): string {
 export class DesktopService {
   private lastScale = 1;
   private lastOrigin = { x: 0, y: 0 };
+  private lastShotAt = 0;
 
   constructor(
     private readonly executor: Executor,
@@ -107,12 +119,28 @@ export class DesktopService {
     return info;
   }
 
-  async screenshot(opts: { maxWidth?: number; display?: "all" | "primary" } = {}) {
-    const maxWidth = Math.min(Math.max(opts.maxWidth ?? 1600, 320), 3840);
+  async screenshot(opts: { maxWidth?: number; display?: "all" | "primary"; window?: string | number } = {}) {
+    // A screenshot of one window beats a shrunken picture of the whole desktop: the target is bigger, so
+    // the model's coordinates are better, and they land in a space that cannot drift between monitors.
+    const maxWidth = Math.min(Math.max(opts.maxWidth ?? 1920, 320), 3840);
     const file = path.join(os.tmpdir(), `chatbridge-shot-${randomId("", 4)}.png`);
+    const windowSelector =
+      opts.window === undefined
+        ? null
+        : typeof opts.window === "number"
+          ? `Get-Process -Id ${Math.round(opts.window)}`
+          : `Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like '*${String(opts.window).replace(/'/g, "''")}*' } | Select-Object -First 1`;
+    const bounds = windowSelector
+      ? `$p = ${windowSelector}
+if (-not $p) { throw "window not found" }
+$r = New-Object KRECT
+[void][KUser32]::GetWindowRect($p.MainWindowHandle, [ref]$r)
+if ($r.Left -lt -30000) { throw "that window is minimised — focus it first with window_focus" }
+$b = New-Object System.Drawing.Rectangle $r.Left, $r.Top, ($r.Right - $r.Left), ($r.Bottom - $r.Top)`
+      : `$b = ${opts.display === "primary" ? "[System.Windows.Forms.Screen]::PrimaryScreen.Bounds" : "[System.Windows.Forms.SystemInformation]::VirtualScreen"}`;
     const script = `${USER32}
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-$b = ${opts.display === "primary" ? "[System.Windows.Forms.Screen]::PrimaryScreen.Bounds" : "[System.Windows.Forms.SystemInformation]::VirtualScreen"}
+${bounds}
 $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
 $g = [System.Drawing.Graphics]::FromImage($bmp)
 $g.CopyFromScreen($b.X, $b.Y, 0, 0, $bmp.Size)
@@ -131,12 +159,27 @@ $g.Dispose(); $g2.Dispose(); $bmp.Dispose(); $out.Dispose()
     await this.executor.remove(file).catch(() => {});
     this.lastScale = meta.scale;
     this.lastOrigin = { x: meta.x, y: meta.y };
+    this.lastShotAt = Date.now();
     return { png, meta };
   }
 
+  /** How long a screenshot is treated as describing the screen. Windows move; menus close. */
+  private static readonly SHOT_FRESH_MS = 120_000;
+
   private toScreen(x: number, y: number, space: "screenshot" | "screen") {
     if (space === "screen") return { x: Math.round(x), y: Math.round(y) };
+    // Without a screenshot there is no coordinate space to convert from, and guessing 1:1 silently clicks
+    // the wrong place — which looks like the click "not working" rather than a missing step.
+    if (!this.lastShotAt) {
+      throw new Error("no screenshot has been taken yet, so screenshot coordinates mean nothing. Call screen_capture first (ideally with window set), or pass space='screen' for real screen pixels.");
+    }
     return { x: Math.round(x / this.lastScale + this.lastOrigin.x), y: Math.round(y / this.lastScale + this.lastOrigin.y) };
+  }
+
+  private staleWarning(space: "screenshot" | "screen"): string {
+    if (space !== "screenshot" || !this.lastShotAt) return "";
+    const age = Date.now() - this.lastShotAt;
+    return age > DesktopService.SHOT_FRESH_MS ? ` WARNING: the screenshot these coordinates came from is ${Math.round(age / 1000)}s old; take a fresh one if this did not land where you expected.` : "";
   }
 
   async mouse(o: { action: "move" | "click" | "double_click" | "right_click" | "middle_click" | "scroll" | "drag"; x?: number; y?: number; toX?: number; toY?: number; amount?: number; space?: "screenshot" | "screen" }) {
@@ -177,19 +220,31 @@ $g.Dispose(); $g2.Dispose(); $bmp.Dispose(); $out.Dispose()
         break;
       }
     }
-    lines.push(`Add-Type -AssemblyName System.Windows.Forms; $p=[System.Windows.Forms.Cursor]::Position; "{0},{1}" -f $p.X,$p.Y`);
-    const pos = await this.ps(lines.join("\n"));
-    return { action: o.action, screenPosition: pos };
+    // Report where the pointer actually ended up and what is in front afterwards, so the model has
+    // evidence the click landed instead of an "ok" that means nothing.
+    lines.push(`Start-Sleep -Milliseconds 120`);
+    lines.push(`Add-Type -AssemblyName System.Windows.Forms; $p=[System.Windows.Forms.Cursor]::Position`);
+    lines.push(FOREGROUND_PS);
+    lines.push(`"{0},{1}|{2}" -f $p.X,$p.Y,$fgTitle`);
+    const out = await this.ps(lines.join("\n"));
+    const [pos = "", front = ""] = out.split("|");
+    const asked = at ? `${at.x},${at.y}` : "";
+    const drift = asked && pos.trim() !== asked ? ` (asked for ${asked}; something moved the pointer)` : "";
+    return { action: o.action, screenPosition: pos.trim() + drift, foregroundWindow: front.trim() || "(none)", note: this.staleWarning(space).trim() || undefined };
   }
 
   async keyboard(o: { text?: string; keys?: string }) {
     if (!o.text && !o.keys) throw new Error("provide text (literal typing) or keys (SendKeys syntax, e.g. ^c, %{F4}, {ENTER})");
     const payload = o.keys ?? escapeSendKeys(o.text!);
-    const script = `Add-Type -AssemblyName System.Windows.Forms
+    const script = `${USER32}
+Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.SendKeys]::SendWait('${payload.replace(/'/g, "''")}')
-"sent"`;
-    await this.ps(script);
-    return { sent: o.keys ? `keys ${o.keys}` : `${o.text!.length} characters` };
+Start-Sleep -Milliseconds 120
+${FOREGROUND_PS}
+$fgTitle`;
+    // Typing goes wherever the focus is, so naming the window it landed in is the only way to notice a miss.
+    const front = (await this.ps(script)).trim();
+    return { sent: o.keys ? `keys ${o.keys}` : `${o.text!.length} characters`, wentTo: front || "(no focused window)" };
   }
 
   async clipboard(o: { action: "get" | "set"; text?: string }) {
