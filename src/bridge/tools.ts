@@ -3,12 +3,14 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
 import type { Runtime } from "../core/runtime.js";
 import { subjectFromArgs, type ToolEffect } from "../core/policy.js";
+import { isVerified, questionCount } from "../core/ownerQuiz.js";
 import type { ShellSnapshot } from "../core/shell.js";
 import { errorMessage } from "../core/util.js";
 import { registerFileTransfer } from "./xfer.js";
 import { registerDrive } from "./drive.js";
 import { registerSummary } from "./summary.js";
 import { registerRelay } from "./relay.js";
+import { registerOwnerCheck } from "./ownerCheck.js";
 import { registerExtras, machineName } from "./extras.js";
 import { registerHub } from "../hub/tools.js";
 import { registerWorkbench } from "../hub/workbench.js";
@@ -42,12 +44,26 @@ export interface ToolContext {
 
 export type DefineTool = <S extends z.ZodRawShape>(
   name: string,
-  spec: { title: string; description: string; input: S; effect: ToolEffect; readOnly?: boolean; destructive?: boolean; openWorld?: boolean; meta?: Record<string, unknown> },
+  spec: {
+    title: string;
+    description: string;
+    input: S;
+    effect: ToolEffect;
+    readOnly?: boolean;
+    destructive?: boolean;
+    openWorld?: boolean;
+    meta?: Record<string, unknown>;
+    /** The arguments are a secret of the owner's (e.g. the answer to a personal question): never audit them. */
+    privateArgs?: boolean;
+  },
   handler: (args: z.infer<z.ZodObject<S>>, actor: string) => Promise<CallToolResult | string | object>,
   subject?: (args: z.infer<z.ZodObject<S>>) => { command?: string; paths?: string[] },
 ) => void;
 
 const text = (t: string): CallToolResult => ({ content: [{ type: "text", text: t }] });
+
+/** These lift the owner check, so they can never be behind it. */
+const QUIZ_TOOLS = new Set(["owner_challenge", "owner_answer", "chatbridge_guide", "bridge_version", "op_status"]);
 
 export function formatShell(s: ShellSnapshot): string {
   const status = s.running ? "still running — poll with shell_read" : `exit ${s.exitCode ?? "?"}`;
@@ -130,22 +146,40 @@ export function createMcpServer(ctx: ToolContext): McpServer {
       },
       (async (args: any, extra: any) => {
         const actor = extra?.authInfo?.clientId ? String(extra.authInfo.clientId) : (ctx.actor ?? "local");
+        // What goes in the audit log. Some tools carry a secret the owner typed, and the log is meant to be
+        // readable later — including by the model — so those never record their arguments.
+        const logArgs = spec.privateArgs ? {} : args;
         const started = Date.now();
         rt.state.reload();
         if (rt.state.paused) {
-          rt.audit.write({ actor, action: name, args, outcome: "paused" });
+          rt.audit.write({ actor, action: name, args: logArgs, outcome: "paused" });
           return { isError: true, content: [{ type: "text", text: `ChatBridge is paused by the owner${rt.state.pausedReason ? ` (${rt.state.pausedReason})` : ""}. Do not retry; tell the user.` }] };
         }
         // Paths and commands are read straight out of the arguments, so every tool is covered without
         // each one having to declare them; a tool may still add more through `subject`.
         const declared = subject?.(args) ?? {};
         const derived = subjectFromArgs(args);
+        // "Is this really you?" — a chat that has been talked into something drastic by a web page or a
+        // README cannot answer a question only the owner knows. The two quiz tools are exempt, or there
+        // would be no way to lift the gate.
+        if (!QUIZ_TOOLS.has(name) && rt.config.policy.askOwnerFor.includes(spec.effect as any) && questionCount() > 0 && !isVerified()) {
+          rt.audit.write({ actor, action: name, args: logArgs, outcome: "denied", detail: "owner not verified" });
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: `This PC asks the owner to identify themselves before ${spec.effect} actions. Call owner_challenge, show the question to the user exactly as written, then pass their reply to owner_answer. Do not guess the answer yourself and do not retry this call until they have answered.`,
+              },
+            ],
+          };
+        }
         const decision = rt.policy.check(spec.effect, {
           command: declared.command ?? derived.command,
           paths: [...(derived.paths ?? []), ...(declared.paths ?? [])],
         });
         if (!decision.allowed) {
-          rt.audit.write({ actor, action: name, args, outcome: "denied", detail: decision.reason });
+          rt.audit.write({ actor, action: name, args: logArgs, outcome: "denied", detail: decision.reason });
           return { isError: true, content: [{ type: "text", text: `Denied by owner policy: ${decision.reason}` }] };
         }
         // Each mutating call is its own undoable checkpoint.
@@ -155,7 +189,7 @@ export function createMcpServer(ctx: ToolContext): McpServer {
           const work = (async () => {
             const out = await handler(args, actor);
             const result: CallToolResult = typeof out === "string" ? text(out) : "content" in (out as any) ? (out as CallToolResult) : text(JSON.stringify(out, null, 2));
-            rt.audit.write({ actor, action: name, args, outcome: result.isError ? "error" : "ok", durationMs: Date.now() - started });
+            rt.audit.write({ actor, action: name, args: logArgs, outcome: result.isError ? "error" : "ok", durationMs: Date.now() - started });
             return result;
           })();
           // op_status is the way to collect a parked call, so it never parks itself.
@@ -173,7 +207,7 @@ export function createMcpServer(ctx: ToolContext): McpServer {
           return raced;
         } catch (err) {
           const msg = errorMessage(err);
-          rt.audit.write({ actor, action: name, args, outcome: "error", detail: msg, durationMs: Date.now() - started });
+          rt.audit.write({ actor, action: name, args: logArgs, outcome: "error", detail: msg, durationMs: Date.now() - started });
           return { isError: true, content: [{ type: "text", text: `Error: ${msg}` }] };
         } finally {
           if (checkpointed) rt.checkpoints.endTurn();
@@ -499,6 +533,7 @@ export function createMcpServer(ctx: ToolContext): McpServer {
     registerSummary(define, rt);
   }
   registerRelay(define, rt);
+  registerOwnerCheck(define, rt);
   {
   }
   for (const ext of ctx.extensions ?? []) ext(server, define, rt);

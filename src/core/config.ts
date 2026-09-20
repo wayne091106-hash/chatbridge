@@ -63,6 +63,11 @@ export const BridgeConfigSchema = z.object({
       alwaysAllow: z.array(z.string()).default([]),
       /** Screen capture, mouse and window control stay off in projects scope unless this is set. */
       projectsAllowDesktop: z.boolean().default(false),
+      /**
+       * Effects that require the owner to have answered a personal question recently (see ownerQuiz).
+       * Empty by default. e.g. ["execute","desktop"] makes commands and mouse/keyboard ask first.
+       */
+      askOwnerFor: z.array(z.enum(["read", "write", "execute", "desktop"])).default([]),
       denyCommandPatterns: z.array(z.string()).default([]),
       denyPathPatterns: z.array(z.string()).default([]),
     })

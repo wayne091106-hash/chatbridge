@@ -142,7 +142,7 @@ chatbridge workbench "C:\你的專案"
 
 - 怎麼連線、多台電腦、分享給別人：[docs/CONNECT.md](docs/CONNECT.md)
 - 技術細節：[docs/TECHNICAL.md](docs/TECHNICAL.md)
-- 工具清單（63 個，自動產生）：[docs/TOOLS.md](docs/TOOLS.md)
+- 工具清單（65 個，自動產生）：[docs/TOOLS.md](docs/TOOLS.md)
 - 安全模型、擋得住什麼擋不住什麼：[docs/SECURITY.md](docs/SECURITY.md)
 - 出問題時：[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
@@ -151,7 +151,7 @@ chatbridge workbench "C:\你的專案"
 ```bash
 npm install
 npm run build
-npm test          # 69 個測試
+npm test          # 74 個測試
 npm run docs      # 新增工具後重新產生 docs/TOOLS.md
 npm link          # 讓 chatbridge 指令在任何地方都能用
 ```

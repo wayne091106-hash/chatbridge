@@ -80,7 +80,7 @@ OAuth：支援動態註冊（DCR）＋ PKCE，擁有者密語＋TOTP。`chatbrid
 
 ## 測試
 
-`npm test`：69 個測試，包含兩個執行器的 contract、OAuth／HTTP／stdio、agent hub（用假的 agent 在真的 git repo 裡跑）、檔案傳輸，以及所有卡片的 script 語法檢查、專案授權的邊界（`C:\work` 不會放行 `C:\work-secrets`）、文件是否過期。
+`npm test`：74 個測試，包含兩個執行器的 contract、OAuth／HTTP／stdio、agent hub（用假的 agent 在真的 git repo 裡跑）、檔案傳輸，以及所有卡片的 script 語法檢查、專案授權的邊界（`C:\work` 不會放行 `C:\work-secrets`）、文件是否過期。
 
 - `npm run typecheck` — 只跑型別
 - `npm run docs` — 重新產生 `docs/TOOLS.md`（新增工具後要跑）

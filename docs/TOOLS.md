@@ -1,6 +1,6 @@
 # 工具清單
 
-ChatBridge 1.2.1 對 ChatGPT／Claude 公開 **63 個工具**。
+ChatBridge 1.2.1 對 ChatGPT／Claude 公開 **65 個工具**。
 
 > 這份檔案由 `npm run docs` 從伺服器本身產生，不要手動編輯。
 
@@ -122,4 +122,6 @@ All hunks are validated before anything is written. |
 |---|---|
 | `view_screen_frame` | Internal: next frame for the live screen card. |
 | `work_recover` | What was still in flight when ChatBridge last stopped (crash, reboot, or the window was closed), and how to pick it up. |
+| `owner_challenge` | Get a personal question that only the owner of this PC can answer. |
+| `owner_answer` | Send the user's reply to the question from owner_challenge, exactly as they wrote it. |
 

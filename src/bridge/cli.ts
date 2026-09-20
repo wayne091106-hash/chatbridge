@@ -2,7 +2,7 @@
 import { isEntryPoint } from "../core/entry.js";
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { createInterface } from "node:readline";
 import path from "node:path";
@@ -35,12 +35,16 @@ Setup
 Run
   chatbridge up                    serve + Kestrel scheduler, web UI and Telegram in one process
   chatbridge serve                 Start the HTTP MCP server (+ OAuth, admin dashboard)
-  chatbridge stdio                 MCP over stdio (OpenAI tunnel-client, Claude Desktop, Codex)
+  chatbridge stdio [--name label]  MCP over stdio (OpenAI tunnel-client, Claude Desktop, Codex).
+                                   --name labels this connection in the audit log (one per account)
   chatbridge autostart enable|disable   Run \`up\` at Windows logon (hidden)
 
 Everyday
-  chatbridge tunnel status|restart|logs [--tail 40]
-                                   The ChatGPT tunnel: is it up, restart it, show its log
+  chatbridge tunnel status|restart|logs [--profile name] [--tail 40]
+                                   The ChatGPT tunnel(s): up?, restart one, show a log.
+                                   One profile per ChatGPT account; no --profile means all
+  chatbridge tunnel add <name> --tunnel-id tunnel_xxx [--key-var VAR]
+                                   Add another ChatGPT account to this PC (runs alongside the first)
   chatbridge mode readonly|full    readonly = ChatGPT can look but not change anything
   chatbridge scope machine|projects
                                    machine = the whole PC (default); projects = only granted folders
@@ -51,6 +55,8 @@ Everyday
   chatbridge name "Office PC"      Name this computer (shown to ChatGPT; helps with several PCs)
   chatbridge agents                Coding agents on this PC and whether they work
   chatbridge recover               Work that was cut off when ChatBridge stopped, and how to continue it
+  chatbridge quiz status|add|remove <id>|test|lock
+                                   Personal questions used to check it is really you (answers stored hashed)
   chatbridge workbench [folder] [--new-token]
                                    Open the full-size workbench in your browser (needs the local server)
   chatbridge drive status|set <folder>|account <email>|off
@@ -196,9 +202,12 @@ async function cmdServe(a: ParsedArgs, withKestrel = false) {
   process.on("SIGTERM", shutdown);
 }
 
-async function cmdStdio() {
+async function cmdStdio(a: ParsedArgs) {
   const rt = await createRuntime({ logger: createLogger((process.env.LOG_LEVEL as any) ?? "warn", "chatbridge") });
-  const server = createMcpServer({ rt, extensions: await agentExtensions(rt.config) });
+  // With more than one tunnel on this PC (e.g. a second ChatGPT account), --name labels which one is
+  // calling, so the audit log and the workbench feed say who did what.
+  const actor = flagString(a, "name") ?? process.env.CHATBRIDGE_ACTOR;
+  const server = createMcpServer({ rt, actor: actor ? `chat:${actor}` : undefined, extensions: await agentExtensions(rt.config) });
   await server.connect(new StdioServerTransport());
   const shutdown = async () => {
     await server.close();
@@ -488,29 +497,122 @@ async function tunnelReady(): Promise<boolean> {
   }
 }
 
-function tunnelProcesses(): { pid: number; name: string }[] {
+function tunnelProcesses(profile?: string): { pid: number; name: string; profile: string }[] {
   if (process.platform !== "win32") return [];
   try {
-    const csv = execFileSync("tasklist", ["/FI", "IMAGENAME eq tunnel-client.exe", "/FO", "CSV", "/NH"], { encoding: "utf8", windowsHide: true });
-    return csv
+    const raw = execFileSync(
+      "powershell",
+      ["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='tunnel-client.exe'\" | ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }"],
+      { encoding: "utf8", windowsHide: true },
+    );
+    const all = raw
       .split(/\r?\n/)
-      .map((l) => l.split('","'))
-      .filter((c) => c.length > 1 && c[0]!.includes("tunnel-client"))
-      .map((c) => ({ name: "tunnel-client.exe", pid: Number(c[1]) }));
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const [pid, ...rest] = l.split("|");
+        return { name: "tunnel-client.exe", pid: Number(pid), profile: /--profile\s+"?([\w.-]+)/.exec(rest.join("|"))?.[1] ?? "chatbridge" };
+      })
+      .filter((p) => Number.isFinite(p.pid));
+    return profile ? all.filter((p) => p.profile === profile) : all;
   } catch {
     return [];
   }
 }
 
+/** Profiles that exist on disk — one yaml per ChatGPT account. */
+function tunnelProfiles(): string[] {
+  const dir = path.join(TUNNEL_DIR(), "profiles");
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => /\.ya?ml$/.test(f))
+    .map((f) => f.replace(/\.ya?ml$/, ""));
+}
+
+/** Each profile keeps its own log, so two accounts do not interleave. */
+function tunnelLog(profile: string): string {
+  return path.join(TUNNEL_DIR(), profile === "chatbridge" ? "tunnel.log" : `tunnel-${profile}.log`);
+}
+
+/**
+ * Adds a second (third, …) ChatGPT account to this PC: its own tunnel profile, its own health port, its own
+ * watchdog, and a --name so the audit log says which account did what. The tunnels run side by side.
+ */
+async function cmdTunnelAdd(a: ParsedArgs) {
+  const name = a._[2];
+  if (!name || !/^[\w-]+$/.test(name)) throw new Error('usage: chatbridge tunnel add <profile-name> --tunnel-id tunnel_xxx [--key-var GPT_TUNNELS_CONTROL_API_KEY-2]');
+  if (name === "chatbridge") throw new Error("that name is taken by the first account");
+  const tunnelId = flagString(a, "tunnel-id");
+  if (!tunnelId?.startsWith("tunnel_")) throw new Error("--tunnel-id must be the tunnel id from platform.openai.com (starts with tunnel_)");
+  const keyVar = flagString(a, "key-var") ?? "GPT_TUNNELS_CONTROL_API_KEY-2";
+  if (!process.env[keyVar] && !execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", `[Environment]::GetEnvironmentVariable('${keyVar}','User')`], { encoding: "utf8", windowsHide: true }).trim()) {
+    throw new Error(`the user environment variable ${keyVar} is empty — put that account's API key there first (it never goes in a file)`);
+  }
+  const dir = TUNNEL_DIR();
+  const used = tunnelProfiles().length;
+  const healthPort = flagNumber(a, "health-port") ?? 18081 + used;
+  const profileFile = path.join(dir, "profiles", `${name}.yaml`);
+  if (existsSync(profileFile) && !a.flags.force) throw new Error(`${profileFile} already exists (use --force to overwrite)`);
+  const cli = path.resolve(fileURLToPath(new URL("../../bin/chatbridge.mjs", import.meta.url))).split("\\").join("/");
+  writeFileSync(
+    profileFile,
+    [
+      "config_version: 1",
+      "control_plane:",
+      '  base_url: "https://api.openai.com"',
+      `  tunnel_id: "${tunnelId}"`,
+      `  api_key: "\${${keyVar}}"`,
+      "health:",
+      `  listen_addr: "127.0.0.1:${healthPort}"`,
+      "admin_ui:",
+      "  open_browser: false",
+      "log:",
+      "  level: info",
+      "  format: json",
+      "mcp:",
+      "  commands:",
+      "    - channel: main",
+      `      command: "node ${cli} stdio --name ${name}"`,
+      "",
+    ].join("\n"),
+    { mode: 0o600 },
+  );
+  const vbs = path.join(dir, `start-hidden-${name}.vbs`);
+  writeFileSync(
+    vbs,
+    `Set sh = CreateObject("WScript.Shell")\r\nsh.Run "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""${path.join(dir, "start-tunnel.ps1")}"" run ${name} ${keyVar}", 0, False\r\n`,
+  );
+  const task = `ChatBridgeTunnelWatchdog-${name}`;
+  try {
+    execFileSync("schtasks", ["/Create", "/F", "/TN", task, "/SC", "MINUTE", "/MO", "5", "/TR", `wscript.exe "${vbs}"`], { stdio: "ignore", windowsHide: true });
+  } catch {
+    out(`(could not register the watchdog task ${task}; the tunnel still runs, it just will not restart itself)`);
+  }
+  out(`profile  ${profileFile}`);
+  out(`health   127.0.0.1:${healthPort}`);
+  out(`key from ${keyVar} (user environment variable)`);
+  out(`watchdog ${task} (every 5 minutes)`);
+  out("");
+  out(`start it now:  wscript.exe "${vbs}"`);
+  out(`then check:    chatbridge tunnel status`);
+  out(`In ChatGPT (that account): Settings → developer mode on, then add an app pointing at this tunnel.`);
+}
+
 async function cmdTunnel(a: ParsedArgs) {
   const sub = a._[1] ?? "status";
-  const log = path.join(TUNNEL_DIR(), "tunnel.log");
+  if (sub === "add") return cmdTunnelAdd(a);
+  // One profile per ChatGPT account. Without --profile, status shows them all and restart takes them all.
+  const only = flagString(a, "profile");
+  const log = tunnelLog(only ?? "chatbridge");
   if (sub === "status") {
-    const procs = tunnelProcesses();
+    const procs = tunnelProcesses(only);
     const ready = await tunnelReady();
-    out(`tunnel program : ${procs.length ? `running (pid ${procs.map((p) => p.pid).join(", ")})` : "NOT running"}`);
+    const known = tunnelProfiles();
+    for (const name of only ? [only] : known.length ? known : ["chatbridge"]) {
+      const mine = procs.filter((p) => p.profile === name);
+      out(`${name.padEnd(12)} ${mine.length ? `running (pid ${mine.map((p) => p.pid).join(", ")})` : "NOT running"}   log: ${tunnelLog(name)}`);
+    }
     out(`connected      : ${ready ? "yes — ChatGPT can reach this PC" : "no"}`);
-    out(`log            : ${log}`);
     if (!procs.length) out(`\nstart it: wscript.exe "${path.join(TUNNEL_DIR(), "start-hidden.vbs")}"   (it also starts by itself at logon)`);
     process.exitCode = ready ? 0 : 1;
   } else if (sub === "restart") {
@@ -525,8 +627,8 @@ async function cmdTunnel(a: ParsedArgs) {
           `Wait until it is idle, or force it with: chatbridge tunnel restart --force`,
       );
     }
-    const procs = tunnelProcesses();
-    if (!procs.length) throw new Error("tunnel is not running; start it with start-hidden.vbs");
+    const procs = tunnelProcesses(only);
+    if (!procs.length) throw new Error(only ? `no tunnel is running for profile "${only}"` : "tunnel is not running; start it with start-hidden.vbs");
     for (const p of procs) execFileSync("taskkill", ["/PID", String(p.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
     out("stopped; waiting for it to come back…");
     for (let i = 0; i < 30; i++) {
@@ -538,7 +640,7 @@ async function cmdTunnel(a: ParsedArgs) {
     if (!existsSync(log)) throw new Error(`no log at ${log}`);
     const lines = readFileSync(log, "utf8").trimEnd().split(/\r?\n/);
     out(lines.slice(-(flagNumber(a, "tail") ?? 40)).join("\n"));
-  } else throw new Error("usage: chatbridge tunnel status|restart|logs [--tail N]");
+  } else throw new Error("usage: chatbridge tunnel status|restart|logs [--profile name] [--tail N] | add <name> --tunnel-id tunnel_xxx");
 }
 
 async function restartTunnelIfRunning() {
@@ -636,6 +738,52 @@ async function cmdRecover(a: ParsedArgs) {
   } finally {
     await rt.close();
   }
+}
+
+/** Personal questions used for the "is this really you?" check. Answers are only ever stored hashed. */
+async function cmdQuiz(a: ParsedArgs) {
+  const { addQuestion, askQuestion, answerQuestion, clearVerification, isVerified, listQuestions, removeQuestion } = await import("../core/ownerQuiz.js");
+  const sub = a._[1] ?? "status";
+
+  if (sub === "add") {
+    const question = a._.slice(2).join(" ").trim() || (await ask("問題（例如「我最喜歡的飲料是什麼？」）："));
+    if (!question) throw new Error("no question given");
+    const answer = await ask("答案（只會存雜湊，不會存原文）：");
+    if (!answer) throw new Error("no answer given");
+    const alts = (await ask("其他也算對的說法，用逗號分隔（可留空）：")).split(/[,，]/).map((x) => x.trim()).filter(Boolean);
+    const item = addQuestion(question, answer, alts);
+    out(`added ${item.id}: ${item.question}`);
+    return;
+  }
+  if (sub === "remove") {
+    const id = a._[2];
+    if (!id) throw new Error("usage: chatbridge quiz remove <id>");
+    out(removeQuestion(id) ? `removed ${id}` : "nothing matched");
+    return;
+  }
+  if (sub === "test") {
+    const q = askQuestion();
+    if (!q) return out("no questions yet — add some with: chatbridge quiz add");
+    const given = await ask(`${q.question}
+> `);
+    const r = answerQuestion(given);
+    out(r.ok ? "correct ✓" : `wrong: ${r.reason}`);
+    // Testing should not leave the bridge unlocked.
+    clearVerification();
+    return;
+  }
+  if (sub === "lock") {
+    clearVerification();
+    return out("verification cleared — the next protected action will ask again");
+  }
+  if (sub !== "status" && sub !== "list") throw new Error("usage: chatbridge quiz status|add|remove <id>|test|lock");
+
+  const items = listQuestions();
+  const cfg = loadConfig();
+  out(`questions: ${items.length}`);
+  for (const i of items) out(`  ${i.id}  ${i.question}  (asked ${i.asked ?? 0}x)`);
+  out(`asks before: ${cfg.policy.askOwnerFor.length ? cfg.policy.askOwnerFor.join(", ") : "nothing (set policy.askOwnerFor, e.g. [\"execute\",\"desktop\"])"}`);
+  out(`verified now: ${isVerified() ? "yes" : "no"}`);
 }
 
 async function cmdName(a: ParsedArgs) {
@@ -782,7 +930,7 @@ export async function main(argv = process.argv.slice(2)) {
     case "up":
       return cmdServe(a, true);
     case "stdio":
-      return cmdStdio();
+      return cmdStdio(a);
     case "status":
       return cmdStatus();
     case "pause":
@@ -819,6 +967,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdGrants();
     case "revoke":
       return cmdRevoke(a);
+    case "quiz":
+      return cmdQuiz(a);
     case "recover":
       return cmdRecover(a);
     case "mode":
